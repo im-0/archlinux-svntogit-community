@@ -1,0 +1,128 @@
+From 883b0b1992c5180de89f160a7f882d80be39d77f Mon Sep 17 00:00:00 2001
+From: Ivan Mironov <mironov.ivan@gmail.com>
+Date: Wed, 26 Oct 2022 15:59:41 +0200
+Subject: [PATCH] Remove net/netip dependency to build with golang 1.17
+
+---
+ iputil/util.go                | 27 ---------------------------
+ overlay/tun_wintun_windows.go | 19 +++----------------
+ 2 files changed, 3 insertions(+), 43 deletions(-)
+
+diff --git a/iputil/util.go b/iputil/util.go
+index 65f7677aa1d7..5e181a2e5cff 100644
+--- a/iputil/util.go
++++ b/iputil/util.go
+@@ -4,7 +4,6 @@ import (
+ 	"encoding/binary"
+ 	"fmt"
+ 	"net"
+-	"net/netip"
+ )
+ 
+ type VpnIp uint32
+@@ -40,12 +39,6 @@ func (ip VpnIp) ToIP() net.IP {
+ 	return nip
+ }
+ 
+-func (ip VpnIp) ToNetIpAddr() netip.Addr {
+-	var nip [4]byte
+-	binary.BigEndian.PutUint32(nip[:], uint32(ip))
+-	return netip.AddrFrom4(nip)
+-}
+-
+ func Ip2VpnIp(ip []byte) VpnIp {
+ 	if len(ip) == 16 {
+ 		return VpnIp(binary.BigEndian.Uint32(ip[12:16]))
+@@ -53,26 +46,6 @@ func Ip2VpnIp(ip []byte) VpnIp {
+ 	return VpnIp(binary.BigEndian.Uint32(ip))
+ }
+ 
+-func ToNetIpAddr(ip net.IP) (netip.Addr, error) {
+-	addr, ok := netip.AddrFromSlice(ip)
+-	if !ok {
+-		return netip.Addr{}, fmt.Errorf("invalid net.IP: %v", ip)
+-	}
+-	return addr, nil
+-}
+-
+-func ToNetIpPrefix(ipNet net.IPNet) (netip.Prefix, error) {
+-	addr, err := ToNetIpAddr(ipNet.IP)
+-	if err != nil {
+-		return netip.Prefix{}, err
+-	}
+-	ones, bits := ipNet.Mask.Size()
+-	if ones == 0 && bits == 0 {
+-		return netip.Prefix{}, fmt.Errorf("invalid net.IP: %v", ipNet)
+-	}
+-	return netip.PrefixFrom(addr, ones), nil
+-}
+-
+ // ubtoa encodes the string form of the integer v to dst[start:] and
+ // returns the number of bytes written to dst. The caller must ensure
+ // that dst has sufficient length.
+diff --git a/overlay/tun_wintun_windows.go b/overlay/tun_wintun_windows.go
+index 0538849be134..f90ea8af6e02 100644
+--- a/overlay/tun_wintun_windows.go
++++ b/overlay/tun_wintun_windows.go
+@@ -5,7 +5,6 @@ import (
+ 	"fmt"
+ 	"io"
+ 	"net"
+-	"net/netip"
+ 	"unsafe"
+ 
+ 	"github.com/sirupsen/logrus"
+@@ -21,7 +20,6 @@ const tunGUIDLabel = "Fixed Nebula Windows GUID v1"
+ type winTun struct {
+ 	Device    string
+ 	cidr      *net.IPNet
+-	prefix    netip.Prefix
+ 	MTU       int
+ 	Routes    []Route
+ 	routeTree *cidr.Tree4
+@@ -64,15 +62,9 @@ func newWinTun(l *logrus.Logger, deviceName string, cidr *net.IPNet, defaultMTU
+ 		return nil, err
+ 	}
+ 
+-	prefix, err := iputil.ToNetIpPrefix(*cidr)
+-	if err != nil {
+-		return nil, err
+-	}
+-
+ 	return &winTun{
+ 		Device:    deviceName,
+ 		cidr:      cidr,
+-		prefix:    prefix,
+ 		MTU:       defaultMTU,
+ 		Routes:    routes,
+ 		routeTree: routeTree,
+@@ -84,7 +76,7 @@ func newWinTun(l *logrus.Logger, deviceName string, cidr *net.IPNet, defaultMTU
+ func (t *winTun) Activate() error {
+ 	luid := winipcfg.LUID(t.tun.LUID())
+ 
+-	if err := luid.SetIPAddresses([]netip.Prefix{t.prefix}); err != nil {
++	if err := luid.SetIPAddresses([]net.IPNet{*t.cidr}); err != nil {
+ 		return fmt.Errorf("failed to set address: %w", err)
+ 	}
+ 
+@@ -103,15 +95,10 @@ func (t *winTun) Activate() error {
+ 			}
+ 		}
+ 
+-		prefix, err := iputil.ToNetIpPrefix(*r.Cidr)
+-		if err != nil {
+-			return err
+-		}
+-
+ 		// Add our unsafe route
+ 		routes = append(routes, &winipcfg.RouteData{
+-			Destination: prefix,
+-			NextHop:     r.Via.ToNetIpAddr(),
++			Destination: *r.Cidr,
++			NextHop:     r.Via.ToIP(),
+ 			Metric:      uint32(r.Metric),
+ 		})
+ 	}
+-- 
+2.37.3
+

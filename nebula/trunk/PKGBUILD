@@ -9,16 +9,19 @@ license=('MIT')
 depends=()
 makedepends=('go')
 options=('!lto')
-source=("${pkgname}-${pkgver}.tar.gz::${url}/archive/v${pkgver}.tar.gz")
-sha256sums=('9c343d998d2eab9473c3bf73d434b8a382d90b1f73095dd1114ecaf2e1c0970f')
+source=("${pkgname}-${pkgver}.tar.gz::${url}/archive/v${pkgver}.tar.gz"
+        '0001-Remove-net-netip-dependency-to-build-with-golang-1.1.patch')
+sha256sums=('9c343d998d2eab9473c3bf73d434b8a382d90b1f73095dd1114ecaf2e1c0970f'
+            '1dd97468b03c2c3c0e4fe760537b18be455071a3cf52dda8e6491cfeb49aa68f')
+
+prepare() {
+  patch -d "${pkgbase}-${pkgver}" -p1 <0001-Remove-net-netip-dependency-to-build-with-golang-1.1.patch
+}
 
 build() {
   cd "${pkgname}-${pkgver}"
 
-  export CGO_CPPFLAGS="${CPPFLAGS}"
-  export CGO_CFLAGS="${CFLAGS}"
-  export CGO_CXXFLAGS="${CXXFLAGS}"
-  export CGO_LDFLAGS="${LDFLAGS}"
+  export CGO_ENABLED="0"
   export GOFLAGS="-buildmode=pie -trimpath -mod=readonly -modcacherw"
 
   for bin in nebula{,-cert,-service}
